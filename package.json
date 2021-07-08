@@ -1,0 +1,146 @@
+{
+  "name": "solid-app-template",
+  "version": "1.0.0",
+  "private": "true",
+  "description": "solid-app-template",
+  "keywords": [],
+  "homepage": "https://github.com/mo36924/solid-app-template#readme",
+  "bugs": {
+    "url": "https://github.com/mo36924/solid-app-template/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mo36924/solid-app-template.git"
+  },
+  "license": "MIT",
+  "author": "mo36924",
+  "type": "module",
+  "main": "./dist/server/index.js",
+  "scripts": {
+    "start": "node dist/server/index.js",
+    "build": "run-s clean lint format build:*",
+    "build:tsc": "tsc",
+    "build:rollup": "rollup -c rollup.config.ts --configPlugin typescript --environment NODE_ENV:production",
+    "dev": "run-p dev:*",
+    "dev:tsc": "tsc -w",
+    "dev:rollup": "rollup -c rollup.config.ts --configPlugin typescript --environment NODE_ENV:development -w",
+    "clean": "del dist",
+    "format": "run-s format:*",
+    "format:sort-package-json": "sort-package-json",
+    "format:prettier": "prettier --write .",
+    "lint": "eslint --ext .ts,.tsx --fix .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "prettier": {
+    "printWidth": 120,
+    "trailingComma": "all"
+  },
+  "eslintConfig": {
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "sourceType": "module"
+    },
+    "plugins": [],
+    "rules": {
+      "no-var": "error",
+      "padding-line-between-statements": [
+        "warn",
+        {
+          "blankLine": "always",
+          "prev": "import",
+          "next": "*"
+        },
+        {
+          "blankLine": "any",
+          "prev": "import",
+          "next": "import"
+        },
+        {
+          "blankLine": "always",
+          "prev": "*",
+          "next": "export"
+        },
+        {
+          "blankLine": "any",
+          "prev": "export",
+          "next": "export"
+        },
+        {
+          "blankLine": "always",
+          "prev": "*",
+          "next": [
+            "class",
+            "function",
+            "block",
+            "block-like",
+            "multiline-expression",
+            "multiline-const",
+            "multiline-let"
+          ]
+        },
+        {
+          "blankLine": "always",
+          "prev": [
+            "class",
+            "function",
+            "block",
+            "block-like",
+            "multiline-expression",
+            "multiline-const",
+            "multiline-let"
+          ],
+          "next": "*"
+        }
+      ]
+    },
+    "ignorePatterns": [
+      "**/dist/**"
+    ]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@babel/core": "^7.14.6",
+    "@babel/plugin-syntax-jsx": "^7.14.5",
+    "@babel/plugin-syntax-typescript": "^7.14.5",
+    "@babel/preset-env": "^7.14.7",
+    "@babel/preset-typescript": "^7.14.5",
+    "@rollup/plugin-alias": "^3.1.2",
+    "@rollup/plugin-babel": "^5.3.0",
+    "@rollup/plugin-commonjs": "^19.0.0",
+    "@rollup/plugin-json": "^4.1.0",
+    "@rollup/plugin-node-resolve": "^13.0.0",
+    "@rollup/plugin-replace": "^2.4.2",
+    "@rollup/plugin-typescript": "^8.2.1",
+    "@types/babel__core": "^7.1.15",
+    "@types/eslint": "^7.2.14",
+    "@types/node": "^16.0.1",
+    "@types/prettier": "^2.3.2",
+    "@typescript-eslint/parser": "^4.28.2",
+    "babel-preset-solid": "^1.0.0",
+    "change-case": "^4.1.2",
+    "chokidar": "^3.5.2",
+    "cssnano": "^5.0.6",
+    "cssnano-preset-advanced": "^5.1.3",
+    "del-cli": "^4.0.0",
+    "eslint": "^7.30.0",
+    "fast-glob": "^3.2.6",
+    "material-design-icons": "^3.0.1",
+    "npm-run-all": "^4.1.5",
+    "playwright": "^1.12.3",
+    "postcss": "^8.3.5",
+    "postcss-cli": "^8.3.1",
+    "postcss-import": "^14.0.2",
+    "postcss-load-config": "^3.1.0",
+    "postcss-url": "^10.1.3",
+    "postcss-value-parser": "^4.1.0",
+    "prettier": "^2.3.2",
+    "rollup": "^2.52.8",
+    "rollup-plugin-terser": "^7.0.2",
+    "solid-js": "^1.0.0",
+    "sort-package-json": "^1.50.0",
+    "subset-font": "^1.3.3",
+    "tailwindcss": "^2.2.4",
+    "tslib": "^2.3.0",
+    "typescript": "^4.3.5"
+  }
+}
