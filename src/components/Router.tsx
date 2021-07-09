@@ -1,16 +1,19 @@
 import type { JSX } from "solid-js/jsx-runtime";
 import { Suspense } from "solid-js";
+import UserId from "../routes/user/_id";
 import _404 from "../routes/404";
 import _500 from "../routes/500";
 import Index from "../routes/index";
 
-type Route<Props = any> = (props: Props) => JSX.Element;
+type Route<T = (props?: any) => JSX.Element> = T;
 
 export const staticRoutes: { [pathname: string]: Route | undefined } = {
   "/": Index as Route,
 };
 
-export const dynamicRoutes: [RegExp, string[], Route][] = [];
+export const dynamicRoutes: [RegExp, string[], Route][] = [
+  [/^\/user\/([^\/]+?)$/, ["id"], UserId as Route<(props: { id: string }) => JSX.Element>],
+];
 
 export const errorRoutes: { [pathname: string]: Route | undefined } = {
   404: _404 as Route,

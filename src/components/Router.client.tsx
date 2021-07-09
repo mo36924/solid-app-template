@@ -3,8 +3,8 @@ import { lazy, Suspense } from "solid-js";
 
 const Index = lazy(() => import("../routes/index.client"));
 
-type Route<Props = any> = ((props: Props) => JSX.Element) & {
-  preload: () => Promise<(props: Props) => JSX.Element>;
+type Route<T = (props?: any) => JSX.Element> = T & {
+  preload: (props?: any) => Promise<T>;
 };
 
 export const staticRoutes: { [pathname: string]: Route | undefined } = {

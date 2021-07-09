@@ -3,6 +3,7 @@ import jsx from "@babel/plugin-syntax-jsx";
 import syntaxTypescript from "@babel/plugin-syntax-typescript";
 import env from "@babel/preset-env";
 import typescript from "@babel/preset-typescript";
+import { gzipAsync } from "@gfx/zopfli";
 import alias from "@rollup/plugin-alias";
 import { babel } from "@rollup/plugin-babel";
 import commonjs from "@rollup/plugin-commonjs";
@@ -13,6 +14,7 @@ import solid from "babel-preset-solid";
 import { pascalCase } from "change-case";
 import { watch } from "chokidar";
 import { createHash } from "crypto";
+import { ESLint } from "eslint";
 import { once } from "events";
 import glob from "fast-glob";
 import { mkdir, readFile, writeFile } from "fs/promises";
@@ -29,11 +31,40 @@ import { terser } from "rollup-plugin-terser";
 import subsetFont from "subset-font";
 import { pathToFileURL } from "url";
 import { Worker } from "worker_threads";
-import { ESLint } from "eslint";
+import { brotliCompressSync, constants } from "zlib";
+
+type Routes = {
+  [pathname: string]: {
+    br?: [headers: Headers, data: Buffer];
+    gzip?: [headers: Headers, data: Buffer];
+    identity: [headers: Headers, data: Buffer];
+  };
+};
+
+type Headers = {
+  "cache-control": string;
+  "content-encoding": "br" | "gzip" | "identity";
+  "content-length": string;
+  "content-type"?: string;
+  etag: string;
+};
 
 declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      NODE_ENV?: "production" | "development" | "test";
+      PORT?: number;
+    }
+  }
   const URL_JS: string | undefined;
   const URL_CSS: string | undefined;
+  const ROUTES: {
+    [pathname: string]: {
+      br?: [headers: Headers, data: Buffer];
+      gzip?: [headers: Headers, data: Buffer];
+      identity: [headers: Headers, data: Buffer];
+    };
+  };
 }
 
 const prod = process.env.NODE_ENV === "production";
@@ -175,10 +206,10 @@ async function routeGenerator(options: {
     const imports: string[] = [`import type { JSX } from "${jsxRuntime}"`];
 
     const type = lazy
-      ? `type Route<Props = any> = ((props: Props) => JSX.Element) & {
-          preload: () => Promise<(props: Props) => JSX.Element>
+      ? `type Route<T = (props?: any) => JSX.Element> = T & {
+          preload: (props?: any) => Promise<T>
         }`
-      : `type Route<Props = any> = (props: Props) => JSX.Element`;
+      : `type Route<T = (props?: any) => JSX.Element> = T`;
 
     const staticRoutes: string[] = [];
     const dynamicRoutes: string[] = [];
@@ -200,7 +231,9 @@ async function routeGenerator(options: {
       }
 
       if (isDynamic) {
-        dynamicRoutes.push(`[${pagePath}, ${JSON.stringify(paramNames)}, ${routeName} as Route<${propsType}>]`);
+        dynamicRoutes.push(
+          `[${pagePath}, ${JSON.stringify(paramNames)}, ${routeName} as Route<(props: ${propsType}) => JSX.Element>]`,
+        );
       } else if (/^\/[45]\d\d$/.test(pagePath)) {
         errorRoutes.push(`${pagePath.slice(1)}: ${routeName} as Route`);
       } else {
@@ -286,11 +319,12 @@ export default async (): Promise<RollupOptions[]> => {
     }),
   ]);
 
-  const globalDefs: { [define: string]: string } = {};
+  const globalDefs: { [define: string]: string | undefined } = { "process.env.NODE_ENV": process.env.NODE_ENV };
   const clientRollupPlugins: RollupPlugin[] = [];
   const serverRollupPlugins: RollupPlugin[] = [];
   const babelPlugins: PluginItem[] = [];
   const postcssPlugins: AcceptedPlugin[] = [];
+  const routes: Routes = {};
 
   // material icons
   if (prod) {
@@ -445,21 +479,107 @@ export default async (): Promise<RollupOptions[]> => {
     const data = await readFile(input, "utf-8");
     const result = await postcss(...plugins, ...postcssPlugins).process(data, options);
     const name = prod ? createHash("sha256").update(result.css).digest("hex").slice(0, 8) : "index";
-    const url = `/${name}.css`;
+    const fileName = `${name}.css`;
+    const url = `/${fileName}`;
     const output = `dist/client${url}`;
     const css = `/*! Material design icons | Apache License 2.0 | https://github.com/google/material-design-icons */\n${result.css}`;
     await write(output, css);
     globalDefs.URL_CSS = url;
+
+    if (prod) {
+      clientRollupPlugins.push({
+        name: "asset-css",
+        buildStart() {
+          this.emitFile({ type: "asset", fileName, name: fileName, source: css });
+        },
+      });
+    }
   }
 
   // rollup plugins
   if (prod) {
     clientRollupPlugins.push({
-      name: "entry",
+      name: "define",
       async generateBundle(_options, bundle) {
-        const entryFileName = Object.values(bundle).find((v) => v.type === "chunk" && v.isEntry)!.fileName;
+        const values = Object.values(bundle);
+        const entryFileName = values.find((v) => v.type === "chunk" && v.isEntry)!.fileName;
         const url = `/${entryFileName}`;
         globalDefs.URL_JS = url;
+
+        for (const value of values) {
+          const source = value.type === "chunk" ? value.code : value.source;
+          const isText = typeof source === "string";
+          const pathname = `/${value.fileName}`;
+          const identity = Buffer.from(source);
+          const cacheControl = "public, max-age=86400";
+          let contentType = "application/javascript; charset=utf-8";
+
+          switch (extname(value.fileName)) {
+            case ".css":
+              contentType = "text/css";
+              break;
+          }
+
+          const identityHeaders: Headers = {
+            "cache-control": cacheControl,
+            "content-encoding": "identity",
+            "content-length": identity.length.toFixed(),
+            "content-type": contentType,
+            etag: `W/"${createHash("md5").update(identity).digest("hex")}"`,
+          };
+
+          if (!isText) {
+            routes[pathname] = {
+              identity: [identityHeaders, identity],
+            };
+
+            continue;
+          }
+
+          const br = brotliCompressSync(identity, {
+            params: {
+              [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
+              [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
+              [constants.BROTLI_PARAM_SIZE_HINT]: identity.length,
+            },
+          });
+
+          const brHeaders: Headers = {
+            "cache-control": cacheControl,
+            "content-encoding": "br",
+            "content-length": br.length.toFixed(),
+            "content-type": contentType,
+            etag: `W/"${createHash("md5").update(br).digest("hex")}"`,
+          };
+
+          const gzip = Buffer.from(await gzipAsync(identity, {}));
+
+          const gzipHeaders: Headers = {
+            "cache-control": cacheControl,
+            "content-encoding": "gzip",
+            "content-length": gzip.length.toFixed(),
+            "content-type": contentType,
+            etag: `W/"${createHash("md5").update(gzip).digest("hex")}"`,
+          };
+
+          routes[pathname] = {
+            br: [brHeaders, br],
+            gzip: [gzipHeaders, gzip],
+            identity: [identityHeaders, identity],
+          };
+        }
+
+        globalDefs["@ROUTES"] = `{${Object.entries(routes)
+          .map(
+            ([pathname, route]) =>
+              `${JSON.stringify(pathname)}:{${Object.entries(route)
+                .map(
+                  ([encoding, [headers, buffer]]) =>
+                    `${encoding}:[${JSON.stringify(headers)},Buffer.from("${buffer.toString("base64")}","base64")]`,
+                )
+                .join()}}`,
+          )
+          .join()}}`;
       },
     });
   } else {
@@ -650,7 +770,7 @@ export default async (): Promise<RollupOptions[]> => {
             "typeof self": '"undefined"',
           },
         }),
-        prod && terser({ ecma: 2020, compress: { global_defs: globalDefs } }),
+        prod && terser({ ecma: 2020, compress: { global_defs: globalDefs, passes: 10 } }),
         ...serverRollupPlugins,
       ],
     },
