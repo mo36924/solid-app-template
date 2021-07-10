@@ -29,10 +29,10 @@ import prettier from "prettier";
 import type { Plugin as RollupPlugin, RollupOptions } from "rollup";
 import { terser } from "rollup-plugin-terser";
 import subsetFont from "subset-font";
+import ts from "typescript";
 import { pathToFileURL } from "url";
 import { Worker } from "worker_threads";
 import { brotliCompressSync, constants } from "zlib";
-import ts from "typescript";
 
 type Routes = {
   [pathname: string]: {
@@ -69,6 +69,8 @@ declare global {
 }
 
 const prod = process.env.NODE_ENV === "production";
+const watcherOptions = !prod && { clearScreen: false };
+const main = "./dist/server/index.js";
 const eslint = new ESLint({ extensions: [".ts", ".tsx"], fix: true });
 
 const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {
@@ -316,7 +318,7 @@ export default async (): Promise<RollupOptions[]> => {
       file: "src/components/Router.tsx",
       dir: "src/routes",
       include: "**/*.tsx",
-      exclude: "**/*.client.tsx",
+      exclude: "**/*.{client,test}.tsx",
     }),
     routeGenerator({
       file: "src/components/Router.client.tsx",
@@ -667,7 +669,7 @@ export default async (): Promise<RollupOptions[]> => {
       name: "restart",
       async writeBundle() {
         await worker?.terminate();
-        worker = new Worker("./dist/server/index.js");
+        worker = new Worker(main);
         await reload();
       },
     });
@@ -734,12 +736,12 @@ export default async (): Promise<RollupOptions[]> => {
         prod && terser({ ecma: 2017, safari10: true }),
         ...clientRollupPlugins,
       ],
+      watch: watcherOptions,
     },
     {
       input: "src",
       output: {
-        dir: "dist/server",
-        entryFileNames: "index.js",
+        file: main,
         compact: true,
         preferConst: true,
         inlineDynamicImports: true,
@@ -802,6 +804,7 @@ export default async (): Promise<RollupOptions[]> => {
         prod && terser({ ecma: 2020, compress: { global_defs: globalDefs, passes: 10 } }),
         ...serverRollupPlugins,
       ],
+      watch: watcherOptions,
     },
   ];
 };
