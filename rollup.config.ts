@@ -32,6 +32,7 @@ import subsetFont from "subset-font";
 import { pathToFileURL } from "url";
 import { Worker } from "worker_threads";
 import { brotliCompressSync, constants } from "zlib";
+import ts from "typescript";
 
 type Routes = {
   [pathname: string]: {
@@ -69,6 +70,12 @@ declare global {
 
 const prod = process.env.NODE_ENV === "production";
 const eslint = new ESLint({ extensions: [".ts", ".tsx"], fix: true });
+
+const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {
+  getCurrentDirectory: ts.sys.getCurrentDirectory,
+  getCanonicalFileName: (fileName) => fileName,
+  getNewLine: () => ts.sys.newLine,
+};
 
 async function write(path: string, data: string, format?: boolean) {
   if (format) {
@@ -318,6 +325,28 @@ export default async (): Promise<RollupOptions[]> => {
       lazy: true,
     }),
   ]);
+
+  const program = ts.createWatchProgram(
+    ts.createWatchCompilerHost(
+      "tsconfig.json",
+      { noEmit: true },
+      ts.sys,
+      ts.createEmitAndSemanticDiagnosticsBuilderProgram,
+      (diagnostic) => ts.sys.write(ts.formatDiagnosticsWithColorAndContext([diagnostic], formatDiagnosticsHost)),
+      (diagnostic, _newLine, _options, errorCount) => {
+        ts.sys.write(ts.formatDiagnosticsWithColorAndContext([diagnostic], formatDiagnosticsHost));
+        process.exitCode = errorCount || 0;
+      },
+    ),
+  );
+
+  if (prod) {
+    program.close();
+
+    if (process.exitCode) {
+      process.exit();
+    }
+  }
 
   const globalDefs: { [define: string]: string | undefined } = { "process.env.NODE_ENV": process.env.NODE_ENV };
   const clientRollupPlugins: RollupPlugin[] = [];
